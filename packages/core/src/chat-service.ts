@@ -90,6 +90,8 @@ export interface ChatServiceOptions {
   toolsApiKey?: string;
   /** Wall clock for one tools-gateway search call */
   toolsTimeoutMs?: number;
+  /** Web search contract: gateway | exa | tavily | firecrawl | other */
+  searchProvider?: string;
   /** Image generation API (OpenAI-compatible images/generations). */
   imageApiBaseUrl?: string;
   imageApiKey?: string;
@@ -179,6 +181,7 @@ const DEFAULTS: ChatServiceOptions = {
   timeToolTimeZone: "Asia/Shanghai",
   webSearchEnabled: false,
   webSearchMaxResults: 5,
+  searchProvider: "gateway",
   imageApiBaseUrl: "",
   imageApiKey: "",
   imageGenModel: "",
@@ -214,6 +217,7 @@ export class ChatService {
       toolsBaseUrl: this.opts.toolsBaseUrl,
       toolsApiKey: this.opts.toolsApiKey,
       toolsTimeoutMs: this.opts.toolsTimeoutMs,
+      searchProvider: this.opts.searchProvider,
       webSearchEnabled: this.opts.webSearchEnabled === true,
       webSearchMaxResults: this.opts.webSearchMaxResults,
       maxSteps: this.opts.chatflowMaxSteps ?? 32,
@@ -231,11 +235,14 @@ export class ChatService {
    * leave a permanently search-less process behind.
    */
   private syncWebSearch(): void {
+    const provider = (this.opts.searchProvider || "gateway").toLowerCase();
+    const needsBase = provider === "gateway" || provider === "other";
     const key =
-      this.opts.webSearchEnabled && this.opts.toolsBaseUrl
+      this.opts.webSearchEnabled && (!needsBase || this.opts.toolsBaseUrl)
         ? [
             this.opts.toolsBaseUrl,
             this.opts.toolsApiKey ?? "",
+            this.opts.searchProvider ?? "",
             this.opts.toolsTimeoutMs ?? "",
           ].join("|")
         : "";
@@ -245,6 +252,7 @@ export class ChatService {
       ? new WebSearchClient({
           toolsBaseUrl: this.opts.toolsBaseUrl!,
           toolsApiKey: this.opts.toolsApiKey || "",
+          provider,
           timeoutMs: this.opts.toolsTimeoutMs,
         })
       : null;
@@ -264,6 +272,7 @@ export class ChatService {
       toolsBaseUrl: this.opts.toolsBaseUrl,
       toolsApiKey: this.opts.toolsApiKey,
       toolsTimeoutMs: this.opts.toolsTimeoutMs,
+      searchProvider: this.opts.searchProvider,
       webSearchEnabled: this.opts.webSearchEnabled === true,
       webSearchMaxResults: this.opts.webSearchMaxResults,
       maxSteps: this.opts.chatflowMaxSteps ?? 32,

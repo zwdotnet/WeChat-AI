@@ -1,3 +1,4 @@
+import { SEARCH_PROVIDERS } from "@wechat-ai/llm";
 import { LOG_LEVELS, VISION_MODES, type AppConfig } from "./config.js";
 
 /**
@@ -39,6 +40,7 @@ export type RuntimeSettingKey =
   // search / tools gateway
   | "webSearchEnabled"
   | "webSearchMaxResults"
+  | "searchProvider"
   | "toolsBaseUrl"
   | "toolsApiKey"
   | "toolsTimeoutMs"
@@ -202,6 +204,8 @@ export interface SettingSpec {
    * Rendered as a <select> in the admin panel.
    */
   options?: readonly string[];
+  /** Optional display labels for `options` (panel shows label, stores key). */
+  optionLabels?: Readonly<Record<string, string>>;
   /**
    * Value is baked into Fastify / a worker pool / a boot branch and cannot be
    * hot-applied. Saved to Redis and shown with a「需重启」badge.
@@ -499,12 +503,30 @@ export const SETTING_SPECS: SettingSpec[] = [
     hint: "Chatflow search 节点可用 max_results 覆盖；工具服务硬上限 10",
   },
   {
+    key: "searchProvider",
+    env: "SEARCH_PROVIDER",
+    group: "search",
+    label: "搜索服务商",
+    type: "string",
+    options: SEARCH_PROVIDERS.slice(),
+    optionLabels: {
+      gateway: "自建工具网关（HF tools）",
+      exa: "Exa — 只填 Key",
+      tavily: "Tavily — 只填 Key",
+      firecrawl: "Firecrawl — 只填 Key",
+      other: "其他 — 填完整链接",
+    },
+    hint:
+      "Exa / Tavily / Firecrawl 只需在下方填密钥即可接通；选「其他」时在「工具网关地址」填完整 API 链接",
+  },
+  {
     key: "toolsBaseUrl",
     env: "TOOLS_BASE_URL",
     group: "search",
     label: "工具网关地址",
     type: "string",
-    hint: "HF tools 服务；用户自定义模型与联网搜索的唯一出站口，留空即关闭这两项能力",
+    hint:
+      "gateway/other 模式必填：gateway 填网关裸地址（自动拼 /v1/web-search），other 填完整 API 链接；Exa/Tavily/Firecrawl 模式无需填写",
   },
   {
     key: "toolsApiKey",
@@ -512,7 +534,8 @@ export const SETTING_SPECS: SettingSpec[] = [
     group: "search",
     label: "工具网关密钥",
     type: "secret",
-    hint: "留空表示不修改；输入 - 可清空",
+    hint:
+      "gateway 模式=网关密钥；Exa/Tavily/Firecrawl 模式=对应服务的 API Key。留空表示不修改；输入 - 可清空",
   },
   {
     key: "toolsTimeoutMs",

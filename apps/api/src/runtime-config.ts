@@ -51,6 +51,8 @@ export interface SettingItemView {
   step?: number;
   /** Closed set for string settings; rendered as a <select> */
   options?: readonly string[];
+  /** Display labels for `options` (panel shows label, stores the key) */
+  optionLabels?: Readonly<Record<string, string>>;
   restart: boolean;
   hint?: string;
   /** Effective value in use right now (secrets masked) */
@@ -272,8 +274,14 @@ export class RuntimeConfigManager {
     if (c.memoryFullInjectMax < c.memoryTopK) {
       out.push("全量注入阈值小于 Top-K，Top-K 将永远不会生效");
     }
-    if (c.webSearchEnabled && !c.toolsBaseUrl) {
+    const provider = (c.searchProvider || "gateway").toLowerCase();
+    const needsBase = provider === "gateway" || provider === "other";
+    const builtInProvider = provider === "exa" || provider === "tavily" || provider === "firecrawl";
+    if (c.webSearchEnabled && needsBase && !c.toolsBaseUrl) {
       out.push("已开启联网搜索但未配置工具网关地址，搜索会直接失败");
+    }
+    if (c.webSearchEnabled && builtInProvider && !c.toolsApiKey) {
+      out.push(`已选择 ${provider} 搜索但密钥为空，搜索会直接失败`);
     }
     if (c.toolsBaseUrl && !c.toolsApiKey) {
       out.push("工具网关已配置但密钥为空，网关可能拒绝请求");
@@ -295,6 +303,7 @@ export class RuntimeConfigManager {
       max: spec.max,
       step: spec.step,
       options: spec.options,
+      optionLabels: spec.optionLabels,
       restart: spec.restart === true,
       hint: spec.hint,
       value: maskIfSecret(spec, this.effective(spec.key)),

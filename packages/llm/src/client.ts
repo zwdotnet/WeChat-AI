@@ -690,9 +690,26 @@ export class LlmClient {
   }
 }
 
+export type SearchProvider =
+  | "gateway"
+  | "exa"
+  | "tavily"
+  | "firecrawl"
+  | "other";
+
+export const SEARCH_PROVIDERS: readonly SearchProvider[] = [
+  "gateway",
+  "exa",
+  "tavily",
+  "firecrawl",
+  "other",
+];
+
 export interface ToolsGatewayConfig {
-  toolsBaseUrl: string;
+  toolsBaseUrl?: string;
   toolsApiKey: string;
+  /** Which search API contract to speak. Default "gateway". */
+  provider?: SearchProvider | string;
   timeoutMs?: number;
 }
 
@@ -703,22 +720,30 @@ export interface WebSearchHit {
 }
 
 /**
- * Web search client — calls the tools gateway, or a full-link search API
- * (e.g. Tavily) when TOOLS_BASE_URL already contains a path.
+ * Web search client — speaks the tools gateway contract by default, or a
+ * built-in provider's native API (Exa / Tavily / Firecrawl) with just a key,
+ * or a full-link custom endpoint ("other") when TOOLS_BASE_URL has a path.
  */
 export class WebSearchClient {
   private baseUrl: string;
   private apiKey: string;
+  private provider: string;
   /** Resolved endpoint: full link as configured, or gateway default path. */
   private endpoint: string;
   private timeoutMs: number;
 
   constructor(cfg: ToolsGatewayConfig) {
-    this.baseUrl = normalizeBaseUrl(cfg.toolsBaseUrl);
+    this.baseUrl = normalizeBaseUrl(cfg.toolsBaseUrl ?? "");
     this.apiKey = (cfg.toolsApiKey ?? "").trim();
+    this.provider = (cfg.provider ?? "gateway").trim().toLowerCase();
     this.endpoint = resolveSearchEndpoint(this.baseUrl);
     this.timeoutMs = cfg.timeoutMs ?? 15_000;
-    if (!this.baseUrl) {
+    if (
+      !this.baseUrl &&
+      this.provider !== "exa" &&
+      this.provider !== "tavily" &&
+      this.provider !== "firecrawl"
+    ) {
       throw new Error("TOOLS_BASE_URL is required for web search");
     }
   }
@@ -727,48 +752,116 @@ export class WebSearchClient {
     query: string,
     maxResults = 5,
   ): Promise<WebSearchHit[]> {
-    const url = this.endpoint;
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "User-Agent": "WeChat-AI/1.0",
-    };
-    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+    if (this.provider === "tavily") return this.searchTavily(query, maxResults);
+    if (this.provider === "exa") return this.searchExa(query, maxResults);
+    if (this.provider === "firecrawl") {
+      return this.searchFirecrawl(query, maxResults);
+    }
+    return this.searchGateway(query, maxResults);
+  }
 
+  private async postForHits(
+    url: string,
+    headers: Record<string, string>,
+    body: Record<string, unknown>,
+    map: (payload: Record<string, unknown>) => WebSearchHit[],
+  ): Promise<WebSearchHit[]> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
     try {
       const resp = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          query,
-          max_results: maxResults,
-        }),
+        body: JSON.stringify(body),
         signal: ctrl.signal,
       });
       const text = await resp.text();
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
       }
-      const data = JSON.parse(text) as {
-        results?: Array<Record<string, unknown>>;
-      };
-      if (!Array.isArray(data.results)) return [];
-      // Gateway results carry `snippet`; Tavily native results carry
-      // `content` — accept both so a full-link direct config works.
-      return data.results.map((r) => ({
-        title: typeof r.title === "string" ? r.title : "",
-        url: typeof r.url === "string" ? r.url : "",
-        snippet:
-          typeof r.snippet === "string"
-            ? r.snippet
-            : typeof r.content === "string"
-              ? r.content
-              : "",
-      }));
+      const payload = JSON.parse(text) as Record<string, unknown>;
+      return map(payload);
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  private hitsFrom(
+    payload: Record<string, unknown>,
+    listKey: string,
+  ): WebSearchHit[] {
+    const list = payload[listKey];
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((raw): Record<string, unknown> =>
+        raw && typeof raw === "object"
+          ? (raw as Record<string, unknown>)
+          : {},
+      )
+      .map((r) => ({
+        title: typeof r.title === "string" ? r.title : "",
+        url: typeof r.url === "string" ? r.url : "",
+        snippet:
+          firstString(r, [
+            "snippet",
+            "content",
+            "text",
+            "description",
+            "markdown",
+          ]) ?? "",
+      }));
+  }
+
+  private async searchGateway(
+    query: string,
+    maxResults: number,
+  ): Promise<WebSearchHit[]> {
+    return this.postForHits(
+      this.endpoint,
+      baseHeaders(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+      { query, max_results: maxResults },
+      (payload) => this.hitsFrom(payload, "results"),
+    );
+  }
+
+  private async searchTavily(
+    query: string,
+    maxResults: number,
+  ): Promise<WebSearchHit[]> {
+    return this.postForHits(
+      "https://api.tavily.com/search",
+      baseHeaders({ Authorization: `Bearer ${this.apiKey}` }),
+      { query, max_results: maxResults },
+      (payload) => this.hitsFrom(payload, "results"),
+    );
+  }
+
+  private async searchExa(
+    query: string,
+    maxResults: number,
+  ): Promise<WebSearchHit[]> {
+    return this.postForHits(
+      "https://api.exa.ai/search",
+      baseHeaders({ "x-api-key": this.apiKey }),
+      {
+        query,
+        numResults: maxResults,
+        contents: { text: { maxCharacters: 500 } },
+      },
+      (payload) => this.hitsFrom(payload, "results"),
+    );
+  }
+
+  private async searchFirecrawl(
+    query: string,
+    maxResults: number,
+  ): Promise<WebSearchHit[]> {
+    return this.postForHits(
+      "https://api.firecrawl.dev/v1/search",
+      baseHeaders({ Authorization: `Bearer ${this.apiKey}` }),
+      { query, limit: maxResults },
+      (payload) => this.hitsFrom(payload, "data"),
+    );
   }
 
   /** Tool-friendly JSON string for LLM tool results. */
@@ -776,6 +869,21 @@ export class WebSearchClient {
     const results = await this.search(query, maxResults);
     return JSON.stringify({ query, results });
   }
+}
+
+function baseHeaders(extra: Record<string, string>): Record<string, string> {
+  return { "Content-Type": "application/json", "User-Agent": "WeChat-AI/1.0", ...extra };
+}
+
+function firstString(
+  obj: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v;
+  }
+  return null;
 }
 
 /**

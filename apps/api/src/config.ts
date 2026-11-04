@@ -80,6 +80,8 @@ export interface AppConfig {
   /** Global switch: allow personas to use web_search via tools gateway */
   webSearchEnabled: boolean;
   webSearchMaxResults: number;
+  /** gateway | exa | tavily | firecrawl | other */
+  searchProvider: string;
   /** OpenAI-compatible images/generations endpoint; empty falls back to LLM_BASE_URL */
   imageApiBaseUrl: string;
   imageApiKey: string;
@@ -451,6 +453,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     llmModel: env.LLM_MODEL ?? "gpt-4o-mini",
     toolsBaseUrl: (env.TOOLS_BASE_URL ?? "").trim().replace(/\/+$/, ""),
     toolsApiKey: (env.TOOLS_API_KEY ?? "").trim(),
+    searchProvider: (env.SEARCH_PROVIDER ?? "gateway").trim().toLowerCase(),
     toolsTimeoutMs: Number(env.TOOLS_TIMEOUT_MS ?? "60000"),
     webSearchEnabled: env.WEB_SEARCH_ENABLED === "true",
     webSearchMaxResults: Number(env.WEB_SEARCH_MAX_RESULTS ?? "5"),

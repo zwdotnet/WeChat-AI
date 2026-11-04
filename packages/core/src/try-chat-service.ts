@@ -48,6 +48,8 @@ export interface TryChatServiceOptions {
   toolsApiKey?: string;
   /** Wall clock for one tools-gateway search call */
   toolsTimeoutMs?: number;
+  /** Web search contract: gateway | exa | tavily | firecrawl | other */
+  searchProvider?: string;
   webSearchEnabled?: boolean;
   /** Default result count for chatflow search nodes (default 5) */
   webSearchMaxResults?: number;
@@ -140,6 +142,7 @@ export class TryChatService {
       toolsBaseUrl: this.opts.toolsBaseUrl,
       toolsApiKey: this.opts.toolsApiKey,
       toolsTimeoutMs: this.opts.toolsTimeoutMs,
+      searchProvider: this.opts.searchProvider,
       webSearchEnabled: this.opts.webSearchEnabled === true,
       webSearchMaxResults: this.opts.webSearchMaxResults,
       maxSteps: this.opts.chatflowMaxSteps ?? 32,
@@ -162,6 +165,7 @@ export class TryChatService {
       toolsBaseUrl: this.opts.toolsBaseUrl,
       toolsApiKey: this.opts.toolsApiKey,
       toolsTimeoutMs: this.opts.toolsTimeoutMs,
+      searchProvider: this.opts.searchProvider,
       webSearchEnabled: this.opts.webSearchEnabled === true,
       webSearchMaxResults: this.opts.webSearchMaxResults,
       maxSteps: this.opts.chatflowMaxSteps ?? 32,

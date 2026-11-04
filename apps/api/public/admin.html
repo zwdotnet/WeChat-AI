@@ -6384,6 +6384,15 @@
     }
 
     function settingsVisible(item) {
+      // Search API UX: with a built-in provider picked, the URL box is noise —
+      // only the key is needed. Show it again for gateway / 其他.
+      if (item.key === "toolsBaseUrl") {
+        const providerItem = settingsState.items.find((i) => i.key === "searchProvider");
+        const provider = String(settingsPendingValue(providerItem) ?? "gateway");
+        if (provider === "exa" || provider === "tavily" || provider === "firecrawl") {
+          return false;
+        }
+      }
       const q = ($("settingsQ")?.value || "").trim().toLowerCase();
       if ($("settingsOnlyOverridden")?.checked && !item.overridden) return false;
       if (!q) return true;
@@ -6430,12 +6439,13 @@
       // free-text box would just be a way to have a save silently ignored.
       if (Array.isArray(item.options) && item.options.length) {
         const cur = String(v == null ? "" : v);
+        const labels = item.optionLabels || {};
         return (
           `<select data-set-key="${esc(item.key)}"${aria}${dis}>` +
           item.options
             .map(
               (o) =>
-                `<option value="${esc(String(o))}"${String(o) === cur ? " selected" : ""}>${esc(String(o))}</option>`,
+                `<option value="${esc(String(o))}"${String(o) === cur ? " selected" : ""}>${esc(String(labels[String(o)] ?? o))}</option>`,
             )
             .join("") +
           `</select>`
@@ -6529,7 +6539,9 @@
           if (same) settingsState.dirty.delete(item.key);
           else settingsState.dirty.set(item.key, next);
           settingsSyncDirtyUi();
-          if (item.type === "bool") renderSettings();
+          if (item.type === "bool" || item.key === "searchProvider") {
+            renderSettings();
+          }
         };
         el.onchange = onChange;
         if (item.type !== "bool") el.oninput = onChange;

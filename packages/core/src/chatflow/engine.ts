@@ -39,6 +39,8 @@ export interface ChatflowEngineOptions {
   platformLlm: LlmClient;
   toolsBaseUrl?: string;
   toolsApiKey?: string;
+  /** Web search contract: gateway | exa | tavily | firecrawl | other */
+  searchProvider?: string;
   webSearchEnabled?: boolean;
   webSearchMaxResults?: number;
   /** Wall clock for one tools-gateway search call */
@@ -206,7 +208,9 @@ export class ChatflowEngine {
             "web search disabled (persona or WEB_SEARCH_ENABLED)",
           );
         }
-        if (!this.opts.toolsBaseUrl) {
+        const provider = (this.opts.searchProvider || "gateway").toLowerCase();
+        const needsBaseUrl = provider === "gateway" || provider === "other";
+        if (needsBaseUrl && !this.opts.toolsBaseUrl) {
           throw new ChatflowError(
             "search_disabled",
             "TOOLS_BASE_URL required for search node",
@@ -215,6 +219,7 @@ export class ChatflowEngine {
         const client = new WebSearchClient({
           toolsBaseUrl: this.opts.toolsBaseUrl,
           toolsApiKey: this.opts.toolsApiKey || "",
+          provider: this.opts.searchProvider,
           timeoutMs: this.opts.toolsTimeoutMs,
         });
         const maxR = Number(

@@ -1,6 +1,8 @@
 export {
   LlmClient,
   WebSearchClient,
+  SEARCH_PROVIDERS,
+  resolveSearchEndpoint,
   loadLlmConfigFromEnv,
   formatCurrentTime,
   flattenChatContent,
@@ -15,5 +17,6 @@ export {
   type ChatCallOptions,
   type BuiltinToolName,
   type ToolsGatewayConfig,
+  type SearchProvider,
   type WebSearchHit,
 } from "./client.js";
