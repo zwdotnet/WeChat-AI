@@ -80,6 +80,11 @@ export interface AppConfig {
   /** Global switch: allow personas to use web_search via tools gateway */
   webSearchEnabled: boolean;
   webSearchMaxResults: number;
+  /** OpenAI-compatible images/generations endpoint; empty falls back to LLM_BASE_URL */
+  imageApiBaseUrl: string;
+  imageApiKey: string;
+  /** Empty = generate_image tool disabled */
+  imageGenModel: string;
   /** Encrypt user-stored custom LLM API keys at rest */
   llmProviderSecret: string;
   /**
@@ -449,6 +454,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     toolsTimeoutMs: Number(env.TOOLS_TIMEOUT_MS ?? "60000"),
     webSearchEnabled: env.WEB_SEARCH_ENABLED === "true",
     webSearchMaxResults: Number(env.WEB_SEARCH_MAX_RESULTS ?? "5"),
+    imageApiBaseUrl: (env.IMAGE_API_BASE_URL ?? "").trim().replace(/\/+$/, ""),
+    imageApiKey: (env.IMAGE_API_KEY ?? "").trim(),
+    imageGenModel: (env.IMAGE_GEN_MODEL ?? "").trim(),
     llmProviderSecret: (env.LLM_PROVIDER_SECRET ?? "").trim(),
     chatflowHttpAllowlist: (env.CHATFLOW_HTTP_ALLOWLIST ?? "")
       .split(",")

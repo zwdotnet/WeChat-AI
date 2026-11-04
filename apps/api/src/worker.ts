@@ -2311,6 +2311,26 @@ export class BotWorkerManager {
               ownerUserId,
             );
           }
+          // Generated images (generate_image tool) follow the text bubbles.
+          const generatedImages = result.images ?? [];
+          for (const image of generatedImages) {
+            try {
+              await client.sendImage({
+                toUserId: job.peerId,
+                contextToken: job.contextToken,
+                image: image.data,
+              });
+              this.opts.log?.(
+                `[worker] sent generated image peer=${job.peerId} bytes=${image.data.length}`,
+              );
+            } catch (err) {
+              this.opts.log?.(
+                `[worker] generated image send failed peer=${job.peerId}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          }
           const outText =
             result.text ||
             parts

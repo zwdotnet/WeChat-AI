@@ -26,6 +26,7 @@ import {
   type ChatCallOptions,
   type LlmUpstream,
 } from "@wechat-ai/llm";
+import { generateImageViaApi, type GeneratedImage } from "./image-gen.js";
 import {
   buildChatMessages,
   buildImageCaptionMessages,
@@ -89,6 +90,11 @@ export interface ChatServiceOptions {
   toolsApiKey?: string;
   /** Wall clock for one tools-gateway search call */
   toolsTimeoutMs?: number;
+  /** Image generation API (OpenAI-compatible images/generations). */
+  imageApiBaseUrl?: string;
+  imageApiKey?: string;
+  /** Empty = generate_image tool not offered. */
+  imageGenModel?: string;
   /** Decrypt user custom LLM keys; required for persona llm_provider_id */
   llmProviderSecret?: string;
   /** Host allowlist for chatflow http nodes (plus tools host) */
@@ -141,6 +147,8 @@ export interface InboundChatResult {
   bubbles?: string[];
   /** Structured parts for mixed text/sticker send */
   parts?: ReplyPart[];
+  /** Images generated this turn (generate_image tool) — worker sends after parts */
+  images?: GeneratedImage[];
   /** Whether bubbles came from model JSON */
   bubblesFromJson?: boolean;
   personaId?: string;
@@ -171,6 +179,9 @@ const DEFAULTS: ChatServiceOptions = {
   timeToolTimeZone: "Asia/Shanghai",
   webSearchEnabled: false,
   webSearchMaxResults: 5,
+  imageApiBaseUrl: "",
+  imageApiKey: "",
+  imageGenModel: "",
   visionMode: "caption",
   visionCaptionMaxTokens: 300,
 };
@@ -273,6 +284,7 @@ export class ChatService {
   }): Promise<{
     client: LlmClient;
     callOpts: ChatCallOptions;
+    images: GeneratedImage[];
   }> {
     const tools: BuiltinToolName[] = [];
     if (this.opts.timeToolEnabled !== false) {
@@ -285,6 +297,13 @@ export class ChatService {
     if (wantSearch) {
       tools.push("web_search");
     }
+    const imageGenBase = this.opts.imageApiBaseUrl?.trim();
+    const imageGenKey = this.opts.imageApiKey?.trim();
+    const imageGenModel = this.opts.imageGenModel?.trim() || "";
+    const wantImageGen = Boolean(imageGenModel && imageGenBase && imageGenKey);
+    if (wantImageGen) {
+      tools.push("generate_image");
+    }
 
     const callOpts: ChatCallOptions = {
       tools,
@@ -295,6 +314,23 @@ export class ChatService {
       const defaultMax = this.opts.webSearchMaxResults ?? 5;
       callOpts.webSearch = (query, maxResults) =>
         ws.searchAsToolResult(query, maxResults ?? defaultMax);
+    }
+    const images: GeneratedImage[] = [];
+    if (wantImageGen) {
+      const cfg = {
+        baseUrl: imageGenBase!,
+        apiKey: imageGenKey!,
+        model: imageGenModel,
+      };
+      callOpts.generateImage = async (prompt, size) => {
+        const image = await generateImageViaApi(cfg, prompt, size);
+        // Bound per-turn fan-out so a chatty model cannot spam a peer.
+        if (images.length >= 2) {
+          return "本条回复的图片数量已达上限，图片未生成。请告知用户后再试。";
+        }
+        images.push(image);
+        return "图片已生成，将作为图片消息随回复直接发送给用户，不要在文字里重复描述图片内容。";
+      };
     }
 
     const secret = this.opts.llmProviderSecret || "";
@@ -325,10 +361,10 @@ export class ChatService {
         toolsApiKey: this.opts.toolsApiKey,
         upstream,
       });
-      return { client, callOpts };
+      return { client, callOpts, images };
     }
 
-    return { client: this.llm, callOpts };
+    return { client: this.llm, callOpts, images };
   }
 
   /** When filter is on, primary model should not emit send-plan JSON. */
@@ -635,6 +671,7 @@ export class ChatService {
     let rawLlmText: string;
     let promptTokens = 0;
     let completionTokens = 0;
+    const generatedImages: GeneratedImage[] = [];
 
     if (persona.mode === "chatflow") {
       // Chatflow MVP: proactive path still uses prompt mode elsewhere;
@@ -683,10 +720,11 @@ export class ChatService {
         attachments,
       });
 
-      const { client: chatClient, callOpts } = await this.resolveChatClient({
+      const { client: chatClient, callOpts, images: turnImages } = await this.resolveChatClient({
         persona,
         ownerUserId: bot?.owner_user_id,
       });
+      generatedImages.push(...turnImages);
       // Route the turn to the vision model only when the model actually gets an
       // image; text turns must keep using the persona's normal model.
       const visionModel = this.opts.visionModel?.trim();
@@ -754,6 +792,7 @@ export class ChatService {
       text: displayText,
       bubbles,
       parts,
+      images: generatedImages.length ? generatedImages : undefined,
       bubblesFromJson,
       personaId: persona.id,
       personaSlug: persona.slug,
@@ -841,6 +880,8 @@ export class ChatService {
     // Proactive: keep tools minimal (no web search spam)
     callOpts.tools = (callOpts.tools || []).filter((t) => t !== "web_search");
     callOpts.webSearch = undefined;
+    callOpts.tools = (callOpts.tools || []).filter((t) => t !== "generate_image");
+    callOpts.generateImage = undefined;
     const usage = await chatClient.chatWithUsage(messages, callOpts);
 
     const owner = bot?.owner_user_id

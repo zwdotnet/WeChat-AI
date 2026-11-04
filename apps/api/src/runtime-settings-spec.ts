@@ -44,6 +44,10 @@ export type RuntimeSettingKey =
   | "toolsTimeoutMs"
   | "timeToolEnabled"
   | "timeToolTimeZone"
+  // image generation
+  | "imageGenModel"
+  | "imageApiBaseUrl"
+  | "imageApiKey"
   // chatflow
   | "chatflowMaxSteps"
   | "chatflowMaxNodes"
@@ -133,6 +137,7 @@ export type SettingGroupId =
   | "memory"
   | "sticker"
   | "vision"
+  | "image"
   | "search"
   | "chatflow"
   | "proactive"
@@ -163,6 +168,11 @@ export const SETTING_GROUPS: SettingGroup[] = [
     id: "search",
     label: "联网搜索与工具网关",
     desc: "全局联网开关 + HF tools 出站（人设仍需各自开启联网）",
+  },
+  {
+    id: "image",
+    label: "图片生成",
+    desc: "generate_image 工具的模型与 API 配置（留空模型即关闭）",
   },
   { id: "chatflow", label: "Chatflow", desc: "图执行上限与 HTTP 节点白名单" },
   { id: "proactive", label: "主动联系", desc: "闲置唤醒的频率与静默时段" },
@@ -527,6 +537,30 @@ export const SETTING_SPECS: SettingSpec[] = [
     label: "默认时区",
     type: "string",
     hint: "IANA 名称，如 Asia/Shanghai",
+  },
+  {
+    key: "imageGenModel",
+    env: "IMAGE_GEN_MODEL",
+    group: "image",
+    label: "生图模型",
+    type: "string",
+    hint: "OpenAI 兼容 images/generations 模型名，如 gpt-image-2-1k；留空关闭生图工具",
+  },
+  {
+    key: "imageApiBaseUrl",
+    env: "IMAGE_API_BASE_URL",
+    group: "image",
+    label: "生图 API 地址",
+    type: "string",
+    hint: "留空跟随平台 LLM 地址",
+  },
+  {
+    key: "imageApiKey",
+    env: "IMAGE_API_KEY",
+    group: "image",
+    label: "生图 API Key",
+    type: "secret",
+    hint: "留空跟随平台 LLM Key；输入 - 可清空",
   },
 
   // ── Chatflow ──

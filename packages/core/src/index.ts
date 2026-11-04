@@ -5,6 +5,7 @@ export {
   type InboundChatResult,
   type ProactiveChatRequest,
 } from "./chat-service.js";
+export { generateImageViaApi, type GeneratedImage } from "./image-gen.js";
 export {
   applyPromptTemplate,
   buildAttachmentBlock,

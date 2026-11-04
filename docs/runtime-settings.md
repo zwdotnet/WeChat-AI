@@ -38,6 +38,15 @@ wa:settings:runtime（Redis JSON）  ←  管理面板写入
 
 其余全部在面板里，包括 `TOOLS_BASE_URL` / `TOOLS_API_KEY`（密钥在 UI 里只显示掩码）。
 
+两个特殊语义：
+
+- `TOOLS_BASE_URL` 填裸地址（如 `http://127.0.0.1:7860`）时，联网搜索自动拼网关路径
+  `/v1/web-search`；填完整链接（如 `https://api.tavily.com/search`）则原样直连，
+  并兼容网关（`snippet`）与 Tavily 原生（`content`）两种返回字段。
+- 「图片生成」组：`IMAGE_GEN_MODEL` 填 OpenAI 兼容生图模型（如 `gpt-image-2-1k`）即启用
+  `generate_image` 工具，机器人可按语境生成图片并直接发进微信；`IMAGE_API_BASE_URL` /
+  `IMAGE_API_KEY` 留空跟随平台 LLM 凭证。
+
 `apps/api/src/runtime-config.test.ts` 有一条守卫用例：**任何新增的 AppConfig 字段**要么进
 `SETTING_SPECS`，要么进那份 env-only 名单，否则测试直接失败。
 

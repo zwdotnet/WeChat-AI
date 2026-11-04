@@ -98,7 +98,10 @@ export interface ChatResult {
   model: string;
 }
 
-export type BuiltinToolName = "get_current_time" | "web_search";
+export type BuiltinToolName =
+  | "get_current_time"
+  | "web_search"
+  | "generate_image";
 
 export interface ChatCallOptions {
   /** Whitelist of built-in tools to expose (empty / omit = no tools) */
@@ -125,6 +128,12 @@ export interface ChatCallOptions {
    * exclusively via the tools gateway (main site never dials search engines).
    */
   webSearch?: (query: string, maxResults?: number) => Promise<string>;
+  /**
+   * When generate_image tool is enabled, called by the client to render a
+   * prompt into an image. The implementer owns delivery: the returned string
+   * is fed back to the model as the tool result.
+   */
+  generateImage?: (prompt: string, size?: string) => Promise<string>;
 }
 
 const TIME_TOOL: ChatCompletionTool = {
@@ -166,6 +175,32 @@ const WEB_SEARCH_TOOL: ChatCompletionTool = {
         },
       },
       required: ["query"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const GENERATE_IMAGE_TOOL: ChatCompletionTool = {
+  type: "function",
+  function: {
+    name: "generate_image",
+    description:
+      "Generate an image from a text description and send it to the user as a WeChat image message. Use when the user asks to draw / paint / create a picture or sticker image.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: {
+          type: "string",
+          description:
+            "Detailed image description. Keep the chat character's style; describe subject, scene, mood, and style in one or two sentences.",
+        },
+        size: {
+          type: "string",
+          description:
+            "Optional image size like 1024x1024, 1024x1536 or 1536x1024. Default 1024x1024.",
+        },
+      },
+      required: ["prompt"],
       additionalProperties: false,
     },
   },
@@ -359,6 +394,9 @@ export class LlmClient {
     const tools: ChatCompletionTool[] = [];
     if (toolNames.includes("get_current_time")) tools.push(TIME_TOOL);
     if (toolNames.includes("web_search")) tools.push(WEB_SEARCH_TOOL);
+    if (toolNames.includes("generate_image")) {
+      tools.push(GENERATE_IMAGE_TOOL);
+    }
     const toolsOpt = tools.length ? tools : undefined;
 
     const apiMessages: ChatCompletionMessageParam[] = messages.map(toApiMessage);
@@ -405,6 +443,7 @@ export class LlmClient {
             fn?.arguments ?? "{}",
             timeZone,
             opts.webSearch,
+            opts.generateImage,
           );
           apiMessages.push({
             role: "tool",
@@ -568,6 +607,7 @@ export class LlmClient {
     argsJson: string,
     defaultTimeZone: string,
     webSearch?: ChatCallOptions["webSearch"],
+    generateImage?: ChatCallOptions["generateImage"],
   ): Promise<string> {
     if (name === "get_current_time") {
       let tz = defaultTimeZone;
@@ -616,6 +656,36 @@ export class LlmClient {
         });
       }
     }
+    if (name === "generate_image") {
+      if (!generateImage) {
+        return JSON.stringify({
+          error: "generate_image is not configured (IMAGE_GEN_MODEL unset)",
+        });
+      }
+      let prompt = "";
+      let size: string | undefined;
+      try {
+        const args = argsJson
+          ? (JSON.parse(argsJson) as { prompt?: string; size?: string })
+          : {};
+        if (typeof args.prompt === "string") prompt = args.prompt.trim();
+        if (typeof args.size === "string" && args.size.trim()) {
+          size = args.size.trim();
+        }
+      } catch {
+        return JSON.stringify({ error: "invalid generate_image arguments" });
+      }
+      if (!prompt) {
+        return JSON.stringify({ error: "prompt is required" });
+      }
+      try {
+        return await generateImage(prompt, size);
+      } catch (err) {
+        return JSON.stringify({
+          error: `generate_image failed: ${(err as Error).message}`,
+        });
+      }
+    }
     return JSON.stringify({ error: `unknown tool: ${name}` });
   }
 }
@@ -633,16 +703,20 @@ export interface WebSearchHit {
 }
 
 /**
- * Web search client — **only** calls tools gateway (never DDG from main site).
+ * Web search client — calls the tools gateway, or a full-link search API
+ * (e.g. Tavily) when TOOLS_BASE_URL already contains a path.
  */
 export class WebSearchClient {
   private baseUrl: string;
   private apiKey: string;
+  /** Resolved endpoint: full link as configured, or gateway default path. */
+  private endpoint: string;
   private timeoutMs: number;
 
   constructor(cfg: ToolsGatewayConfig) {
     this.baseUrl = normalizeBaseUrl(cfg.toolsBaseUrl);
     this.apiKey = (cfg.toolsApiKey ?? "").trim();
+    this.endpoint = resolveSearchEndpoint(this.baseUrl);
     this.timeoutMs = cfg.timeoutMs ?? 15_000;
     if (!this.baseUrl) {
       throw new Error("TOOLS_BASE_URL is required for web search");
@@ -653,7 +727,7 @@ export class WebSearchClient {
     query: string,
     maxResults = 5,
   ): Promise<WebSearchHit[]> {
-    const url = `${this.baseUrl}/v1/web-search`;
+    const url = this.endpoint;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": "WeChat-AI/1.0",
@@ -676,8 +750,22 @@ export class WebSearchClient {
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}: ${text.slice(0, 200)}`);
       }
-      const data = JSON.parse(text) as { results?: WebSearchHit[] };
-      return Array.isArray(data.results) ? data.results : [];
+      const data = JSON.parse(text) as {
+        results?: Array<Record<string, unknown>>;
+      };
+      if (!Array.isArray(data.results)) return [];
+      // Gateway results carry `snippet`; Tavily native results carry
+      // `content` — accept both so a full-link direct config works.
+      return data.results.map((r) => ({
+        title: typeof r.title === "string" ? r.title : "",
+        url: typeof r.url === "string" ? r.url : "",
+        snippet:
+          typeof r.snippet === "string"
+            ? r.snippet
+            : typeof r.content === "string"
+              ? r.content
+              : "",
+      }));
     } finally {
       clearTimeout(timer);
     }
@@ -688,6 +776,22 @@ export class WebSearchClient {
     const results = await this.search(query, maxResults);
     return JSON.stringify({ query, results });
   }
+}
+
+/**
+ * TOOLS_BASE_URL doubles as the search endpoint:
+ * - bare origin / root (tools gateway) → append the gateway path
+ * - URL that already carries a path (full link, e.g. Tavily /search) → as-is
+ */
+export function resolveSearchEndpoint(baseUrl: string): string {
+  if (!baseUrl) return baseUrl;
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.pathname && parsed.pathname !== "/") return baseUrl;
+  } catch {
+    /* not an absolute URL — keep legacy append behavior */
+  }
+  return `${baseUrl}/v1/web-search`;
 }
 
 export async function probeToolsHealth(
