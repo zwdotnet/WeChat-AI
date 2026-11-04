@@ -258,6 +258,19 @@ export class ChatService {
       : null;
   }
 
+  /** Effective image-gen API config, or null when the tool should be off. */
+  private imageGenConfig(): {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  } | null {
+    const baseUrl = this.opts.imageApiBaseUrl?.trim() || "";
+    const apiKey = this.opts.imageApiKey?.trim() || "";
+    const model = this.opts.imageGenModel?.trim() || "";
+    if (!baseUrl || !apiKey || !model) return null;
+    return { baseUrl, apiKey, model };
+  }
+
   /**
    * Apply admin-editable settings in place (runtime settings reload).
    * Only the keys present in `patch` are touched.
@@ -306,10 +319,8 @@ export class ChatService {
     if (wantSearch) {
       tools.push("web_search");
     }
-    const imageGenBase = this.opts.imageApiBaseUrl?.trim();
-    const imageGenKey = this.opts.imageApiKey?.trim();
-    const imageGenModel = this.opts.imageGenModel?.trim() || "";
-    const wantImageGen = Boolean(imageGenModel && imageGenBase && imageGenKey);
+    const imageGenCfg = this.imageGenConfig();
+    const wantImageGen = imageGenCfg !== null;
     if (wantImageGen) {
       tools.push("generate_image");
     }
@@ -326,19 +337,30 @@ export class ChatService {
     }
     const images: GeneratedImage[] = [];
     if (wantImageGen) {
-      const cfg = {
-        baseUrl: imageGenBase!,
-        apiKey: imageGenKey!,
-        model: imageGenModel,
-      };
       callOpts.generateImage = async (prompt, size) => {
-        const image = await generateImageViaApi(cfg, prompt, size);
         // Bound per-turn fan-out so a chatty model cannot spam a peer.
         if (images.length >= 2) {
           return "本条回复的图片数量已达上限，图片未生成。请告知用户后再试。";
         }
-        images.push(image);
-        return "图片已生成，将作为图片消息随回复直接发送给用户，不要在文字里重复描述图片内容。";
+        const started = Date.now();
+        console.log(
+          `[image-gen] start model=${imageGenCfg!.model} prompt=${prompt.slice(0, 80)}`,
+        );
+        try {
+          const image = await generateImageViaApi(imageGenCfg!, prompt, size);
+          images.push(image);
+          console.log(
+            `[image-gen] done bytes=${image.data.length} in ${Date.now() - started}ms`,
+          );
+          return "图片已生成，将作为图片消息随回复直接发送给用户，不要在文字里重复描述图片内容。";
+        } catch (err) {
+          console.log(
+            `[image-gen] failed after ${Date.now() - started}ms: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          throw err;
+        }
       };
     }
 
@@ -726,6 +748,7 @@ export class ChatService {
         multiBubbleJson: this.primaryMultiBubbleJson(),
         stickers,
         timeToolEnabled: this.opts.timeToolEnabled !== false,
+        imageGenEnabled: this.imageGenConfig() !== null,
         attachments,
       });
 

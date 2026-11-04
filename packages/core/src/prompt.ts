@@ -278,6 +278,16 @@ function buildTimeToolBlock(enabled: boolean | undefined): string {
   ].join("\n");
 }
 
+function buildImageGenToolBlock(enabled: boolean | undefined): string {
+  if (!enabled) return "";
+  return [
+    "## 生图工具",
+    "当用户要求画图、生成图片、画画或制作图片表情时，你必须调用 generate_image 工具。",
+    "不要说自己不会画画，也不要只给文字描述；调用后图片会随你的回复自动发给用户。",
+    "generate_image 的 prompt 要具体描述画面主体、风格与细节（一两句即可）。",
+  ].join("\n");
+}
+
 function buildFormatBlock(opts: {
   multiBubbleJson?: boolean;
   stickers?: StickerPromptEntry[];
@@ -323,6 +333,8 @@ export function buildChatMessages(params: {
   stickers?: StickerPromptEntry[];
   /** Mention get_current_time tool in system prompt */
   timeToolEnabled?: boolean;
+  /** Mention generate_image tool in system prompt */
+  imageGenEnabled?: boolean;
   /** Media attached to this message (images become content parts) */
   attachments?: PromptAttachment[];
 }): ChatMessage[] {
@@ -333,6 +345,7 @@ export function buildChatMessages(params: {
   const memoryBlock = buildMemoryBlock(params.memories);
   const stickerBlock = buildStickerCatalogBlock(params.stickers);
   const timeBlock = buildTimeToolBlock(params.timeToolEnabled);
+  const imageGenBlock = buildImageGenToolBlock(params.imageGenEnabled);
   const attachmentBlock = buildAttachmentBlock(params.attachments);
   const formatBlock = buildFormatBlock({
     multiBubbleJson: params.multiBubbleJson,
@@ -345,6 +358,7 @@ export function buildChatMessages(params: {
     memoryBlock,
     stickerBlock,
     timeBlock,
+    imageGenBlock,
     attachmentBlock,
     formatBlock,
   ]
