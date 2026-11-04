@@ -70,6 +70,8 @@ export interface AppConfig {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  /** Platform LLM sampling temperature (upstream pools may require 1) */
+  llmTemperature: number;
   /**
    * HF / tools gateway (user custom LLM egress + web search).
    * Main site never dials user custom base_url; only this host.
@@ -451,6 +453,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     llmBaseUrl: env.LLM_BASE_URL ?? "https://api.openai.com/v1",
     llmApiKey: env.LLM_API_KEY ?? "",
     llmModel: env.LLM_MODEL ?? "gpt-4o-mini",
+    llmTemperature: Number(env.LLM_TEMPERATURE ?? "0.8"),
     toolsBaseUrl: (env.TOOLS_BASE_URL ?? "").trim().replace(/\/+$/, ""),
     toolsApiKey: (env.TOOLS_API_KEY ?? "").trim(),
     searchProvider: (env.SEARCH_PROVIDER ?? "gateway").trim().toLowerCase(),

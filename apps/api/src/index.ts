@@ -115,6 +115,7 @@ async function main(): Promise<void> {
     baseURL: cfg.llmBaseUrl,
     apiKey: cfg.llmApiKey || "missing",
     model: cfg.llmModel,
+    temperature: cfg.llmTemperature,
     toolsBaseUrl: cfg.toolsBaseUrl || undefined,
     toolsApiKey: cfg.toolsApiKey || undefined,
   });
@@ -148,6 +149,7 @@ async function main(): Promise<void> {
         baseURL: cfg.visionBaseUrl || cfg.llmBaseUrl,
         apiKey: cfg.visionApiKey || cfg.llmApiKey || "missing",
         model: cfg.visionModel || cfg.llmModel,
+        temperature: cfg.llmTemperature,
         maxTokens: cfg.visionCaptionMaxTokens,
       })
     : null;

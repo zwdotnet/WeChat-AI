@@ -80,6 +80,7 @@ describe("runtime settings spec", () => {
       "llmBaseUrl",
       "llmApiKey",
       "llmModel",
+      "llmTemperature",
       "llmProviderSecret",
       "sessionCookieName",
       "cookieSecure",
@@ -117,6 +118,7 @@ describe("runtime settings spec", () => {
       "llmBaseUrl",
       "llmApiKey",
       "llmModel",
+      "llmTemperature",
       // vision endpoint credentials — same trust level as the platform LLM
       "visionBaseUrl",
       "visionApiKey",
