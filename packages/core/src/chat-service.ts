@@ -756,7 +756,6 @@ export class ChatService {
         persona,
         ownerUserId: bot?.owner_user_id,
       });
-      generatedImages.push(...turnImages);
       // Route the turn to the vision model only when the model actually gets an
       // image; text turns must keep using the persona's normal model.
       const visionModel = this.opts.visionModel?.trim();
@@ -764,6 +763,9 @@ export class ChatService {
         callOpts.model = visionModel;
       }
       const usage = await chatClient.chatWithUsage(messages, callOpts);
+      // turnImages is the same array the generate_image callback fills —
+      // spread it only AFTER the call, or the copy is taken while empty.
+      generatedImages.push(...turnImages);
       rawLlmText = usage.text;
       promptTokens = usage.promptTokens;
       completionTokens = usage.completionTokens;
