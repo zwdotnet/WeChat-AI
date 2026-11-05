@@ -38,14 +38,21 @@ wa:settings:runtime（Redis JSON）  ←  管理面板写入
 
 其余全部在面板里，包括 `TOOLS_BASE_URL` / `TOOLS_API_KEY`（密钥在 UI 里只显示掩码）。
 
-两个特殊语义：
+三个特殊语义：
 
+- `SEARCH_PROVIDER` 可选 `gateway` / `exa` / `tavily` / `firecrawl` / `other`。
+  Exa、Tavily、Firecrawl 只需在密钥框填写对应 API Key，地址框会自动隐藏；
+  `gateway` 填工具网关裸地址，`other` 填完整 API 链接。
 - `TOOLS_BASE_URL` 填裸地址（如 `http://127.0.0.1:7860`）时，联网搜索自动拼网关路径
-  `/v1/web-search`；填完整链接（如 `https://api.tavily.com/search`）则原样直连，
-  并兼容网关（`snippet`）与 Tavily 原生（`content`）两种返回字段。
-- 「图片生成」组：`IMAGE_GEN_MODEL` 填 OpenAI 兼容生图模型（如 `gpt-image-2-1k`）即启用
-  `generate_image` 工具，机器人可按语境生成图片并直接发进微信；`IMAGE_API_BASE_URL` /
-  `IMAGE_API_KEY` 留空跟随平台 LLM 凭证。
+  `/v1/web-search`；填带路径的完整链接（如 `https://api.tavily.com/search`）则原样直连，
+  并兼容网关（`snippet`）与各服务商原生返回字段。
+- 「图片生成」组：先勾选“启用生图工具”，再填 OpenAI 兼容生图模型
+  （如 `gpt-image-2-1k`）；模型或开关为空都不会提供 `generate_image`。
+  机器人可按语境生成图片并直接发进微信；`IMAGE_API_BASE_URL` / `IMAGE_API_KEY`
+  留空跟随平台 LLM 凭证。
+
+生图与搜索的完整请求契约、日志和排查方式见
+[`image-gen-and-search.md`](image-gen-and-search.md)。
 
 `apps/api/src/runtime-config.test.ts` 有一条守卫用例：**任何新增的 AppConfig 字段**要么进
 `SETTING_SPECS`，要么进那份 env-only 名单，否则测试直接失败。
