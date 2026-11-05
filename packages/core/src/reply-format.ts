@@ -93,22 +93,38 @@ export function parseMultiBubbleReply(
   let fromJson = false;
   let parts: ReplyPart[] = [];
 
-  const parsed = tryParseJsonParts(text, maxBubbles, maxStickers);
+  // A turn that answered in plain text and then appended a (possibly
+  // truncated) {"messages":...} repeat must not ship the JSON as visible
+  // text — seen live when a tool result made the model answer twice. Cut the
+  // fragment, salvage any strings it adds that the head text does not have.
+  let working = text;
+  let salvaged: string[] = [];
+  const residue = findMessageJsonResidue(text);
+  if (residue) {
+    working = residue.head;
+    salvaged = residue.salvaged;
+  }
+
+  const parsed = tryParseJsonParts(working || text, maxBubbles, maxStickers);
   if (parsed) {
     fromJson = true;
     parts = parsed;
   } else if (fallbackSplit) {
-    const bubbles = splitReplyIntoBubbles(text, {
+    const bubbles = splitReplyIntoBubbles(working || text, {
       maxChunks: maxBubbles,
       maxChunkChars,
       minChunkChars: 6,
     });
-    parts = (bubbles.length ? bubbles : [text]).map((t) => ({
+    parts = (bubbles.length ? bubbles : [working || text]).map((t) => ({
       kind: "text" as const,
       text: t,
     }));
   } else {
-    parts = [{ kind: "text", text }];
+    parts = [{ kind: "text", text: working || text }];
+  }
+
+  if (!fromJson && salvaged.length) {
+    parts.push(...salvaged.map((s) => ({ kind: "text" as const, text: s })));
   }
 
   // Collapse before expand so a model that emitted the same multi-line
@@ -193,7 +209,7 @@ export function sanitizePartsStripStickerJson(
         out.push(e);
         stickerCount++;
       } else {
-        const cleaned = stripAllStickerJson(e.text).trim();
+        const cleaned = stripAllStickerJson(stripMessageJsonResidue(e.text)).trim();
         if (cleaned) out.push({ kind: "text", text: cleaned });
       }
     }
@@ -304,6 +320,43 @@ function finalizeParts(parts: ReplyPart[]): ReplyPart[] {
     if (t) out.push({ kind: "text", text: t });
   }
   return out;
+}
+
+const MESSAGE_JSON_RESIDUE_RE = /\{\s*["']?messages["']?\s*:/;
+
+/**
+ * Detect a trailing/buried {"messages": ...} fragment inside free text and
+ * split it off. Returns null when the text has no such fragment, or when the
+ * fragment IS the whole text (a real envelope — the JSON parser handles it).
+ */
+function findMessageJsonResidue(
+  text: string,
+): { head: string; salvaged: string[] } | null {
+  const match = MESSAGE_JSON_RESIDUE_RE.exec(text);
+  if (!match || match.index === 0) return null;
+  const head = text.slice(0, match.index).trim();
+  if (!head) return null;
+  const fragment = text.slice(match.index);
+  const salvaged: string[] = [];
+  for (const m of fragment.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+    const s = m[1]!
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, "\n")
+      .trim();
+    if (!s || s === "messages") continue;
+    // Truncated repeats restate the head text — keep only net-new strings.
+    if (head.includes(s)) continue;
+    if (!salvaged.includes(s)) salvaged.push(s);
+  }
+  return { head, salvaged };
+}
+
+/** Last-resort cut: never let a {"messages": ...} fragment reach a bubble. */
+function stripMessageJsonResidue(text: string): string {
+  const match = MESSAGE_JSON_RESIDUE_RE.exec(text);
+  if (!match) return text;
+  if (match.index === 0) return "";
+  return text.slice(0, match.index).trim();
 }
 
 /**

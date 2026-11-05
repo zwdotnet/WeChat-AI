@@ -250,6 +250,40 @@ describe("parseMultiBubbleReply", () => {
     );
     assert.deepEqual(r.bubbles, ["[公告] 明天见", "笑死[捂脸]"]);
   });
+
+  it("salvages a plain-text answer that trails a truncated JSON repeat", () => {
+    // Seen live: tool-result turn answered twice — full text plus a cut-off
+    // {"messages":["查到了！ fragment. The fragment must never ship.
+    const r = parseMultiBubbleReply(
+      `查到了！明天武汉多云，12～23℃ 😂{"messages":["查到了！`,
+    );
+    assert.equal(r.fromJson, false);
+    for (const p of r.parts) {
+      if (p.kind === "text") {
+        assert.ok(!p.text.includes("{"), JSON.stringify(p.text));
+      }
+    }
+    assert.ok(r.displayText.startsWith("查到了！明天武汉多云"));
+  });
+
+  it("salvages net-new strings from a complete trailing JSON repeat", () => {
+    const r = parseMultiBubbleReply(
+      `正文已经说了 {"messages":["补充一句","正文已经说了"]}`,
+    );
+    const texts = r.parts.map((p) => (p.kind === "text" ? p.text : ""));
+    assert.ok(texts.some((t) => t.includes("补充一句")));
+    // The restating string that duplicates the head is dropped — the head
+    // bubble stays, but no third duplicate bubble may appear.
+    assert.equal(texts.filter((t) => t === "正文已经说了").length, 1);
+    for (const t of texts) assert.ok(!t.includes("messages"));
+  });
+
+  it("drops a residue fragment even when it starts its own bubble", () => {
+    const r = parseMultiBubbleReply(`第一句\n{"messages":["x"]}`);
+    for (const p of r.parts) {
+      if (p.kind === "text") assert.ok(!p.text.includes("{"));
+    }
+  });
 });
 
 describe("renderAssistantHistoryForModel", () => {
