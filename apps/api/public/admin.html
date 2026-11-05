@@ -1338,6 +1338,15 @@
     }
     input, select { min-height: 42px; }
     /*
+     * Native dropdown lists ignore the control's own background/color, so in
+     * dark theme the options render white-on-white (invisible until hover).
+     * Pin them to the theme surface + text colors.
+     */
+    select option, select optgroup {
+      background-color: var(--surface);
+      color: var(--text);
+    }
+    /*
      * Sliders opt out of the text-field chrome (border/padding/background)
      * but keep the native widget: `appearance: none` would erase the track and
      * thumb in Blink/WebKit unless every ::-webkit-slider-* pseudo is styled,

@@ -87,6 +87,8 @@ export interface AppConfig {
   /** OpenAI-compatible images/generations endpoint; empty falls back to LLM_BASE_URL */
   imageApiBaseUrl: string;
   imageApiKey: string;
+  /** Master switch for the generate_image tool (model must also be set) */
+  imageGenEnabled: boolean;
   /** Empty = generate_image tool disabled */
   imageGenModel: string;
   /** Encrypt user-stored custom LLM API keys at rest */
@@ -460,8 +462,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     toolsTimeoutMs: Number(env.TOOLS_TIMEOUT_MS ?? "60000"),
     webSearchEnabled: env.WEB_SEARCH_ENABLED === "true",
     webSearchMaxResults: Number(env.WEB_SEARCH_MAX_RESULTS ?? "5"),
-    imageApiBaseUrl: (env.IMAGE_API_BASE_URL ?? "").trim().replace(/\/+$/, ""),
-    imageApiKey: (env.IMAGE_API_KEY ?? "").trim(),
+    // Resolve the platform-LLM fallback at load so the admin panel shows the
+    // effective values (and 恢复默认 restores to them) instead of blank rows.
+    imageApiBaseUrl:
+      (env.IMAGE_API_BASE_URL ?? "").trim().replace(/\/+$/, "") ||
+      (env.LLM_BASE_URL ?? "").trim().replace(/\/+$/, ""),
+    imageApiKey:
+      (env.IMAGE_API_KEY ?? "").trim() || (env.LLM_API_KEY ?? "").trim(),
+    imageGenEnabled: env.IMAGE_GEN_ENABLED !== "false",
     imageGenModel: (env.IMAGE_GEN_MODEL ?? "").trim(),
     llmProviderSecret: (env.LLM_PROVIDER_SECRET ?? "").trim(),
     chatflowHttpAllowlist: (env.CHATFLOW_HTTP_ALLOWLIST ?? "")

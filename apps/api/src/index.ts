@@ -194,6 +194,7 @@ async function main(): Promise<void> {
       searchProvider: cfg.searchProvider,
       imageApiBaseUrl: cfg.imageApiBaseUrl || cfg.llmBaseUrl,
       imageApiKey: cfg.imageApiKey || cfg.llmApiKey || "missing",
+      imageGenEnabled: cfg.imageGenEnabled,
       imageGenModel: cfg.imageGenModel || undefined,
       llmProviderSecret: cfg.llmProviderSecret || undefined,
       chatflowHttpAllowHosts: cfg.chatflowHttpAllowlist,

@@ -95,6 +95,8 @@ export interface ChatServiceOptions {
   /** Image generation API (OpenAI-compatible images/generations). */
   imageApiBaseUrl?: string;
   imageApiKey?: string;
+  /** Master switch for the generate_image tool (model must also be set) */
+  imageGenEnabled?: boolean;
   /** Empty = generate_image tool not offered. */
   imageGenModel?: string;
   /** Decrypt user custom LLM keys; required for persona llm_provider_id */
@@ -184,6 +186,7 @@ const DEFAULTS: ChatServiceOptions = {
   searchProvider: "gateway",
   imageApiBaseUrl: "",
   imageApiKey: "",
+  imageGenEnabled: true,
   imageGenModel: "",
   visionMode: "caption",
   visionCaptionMaxTokens: 300,
@@ -264,6 +267,7 @@ export class ChatService {
     apiKey: string;
     model: string;
   } | null {
+    if (this.opts.imageGenEnabled === false) return null;
     const baseUrl = this.opts.imageApiBaseUrl?.trim() || "";
     const apiKey = this.opts.imageApiKey?.trim() || "";
     const model = this.opts.imageGenModel?.trim() || "";
